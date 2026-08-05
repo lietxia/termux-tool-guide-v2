@@ -49,12 +49,6 @@ uv pip install -e ".[termux-all]"
 - `x_search (missing XAI_API_KEY)` — 未配置 xAI
 - `No env user allowlists configured` — 已配对用户能用就行
 
-### 隐藏工具不可用警告
-
-```bash
-hermes config set display.hide_unavailable_tools true
-```
-
 ### 重启 Gateway 的正确方式
 
 Hermes 不能自己重启自己（会先杀当前进程），必须在**另一个 Termux 窗口**执行：
@@ -73,20 +67,53 @@ Hermes Agent 要求 Python `<3.14,>=3.11`，但 Termux 的 `pkg upgrade` 会自�
 
 ### 解决方案
 
-```bash
-# 降级 Python
-apt-get install --allow-downgrades -y python=3.13.12-3
+**方案 1：独立 Python 环境（推荐）**
 
-# 锁定版本防止自动升级
+创建真正独立的 Python venv，复制二进制+库+标准库，不受系统升级影响：
+
+```bash
+cd ~/hermes-agent/venv/bin
+
+# 1. 删除符号链接
+rm python python3 python3.13
+
+# 2. 复制 Python 二进制（不是链接）
+cp /data/data/com.termux/files/usr/bin/python3.13 ~/hermes-agent/venv/bin/python3.13
+ln -sf python3.13 ~/hermes-agent/venv/bin/python3
+ln -sf python3 ~/hermes-agent/venv/bin/python
+
+# 3. 复制共享库
+mkdir -p ~/hermes-agent/venv/lib
+cp /data/data/com.termux/files/usr/lib/libpython3.13.so ~/hermes-agent/venv/lib/
+
+# 4. 更新 pyvenv.cfg
+cat > ~/hermes-agent/venv/pyvenv.cfg << 'EOF'
+home = /data/data/com.termux/files/usr/bin
+implementation = CPython
+version_info = 3.13.12
+include-system-site-packages = false
+EOF
+```
+
+**方案 2：完整 Python 独立安装（彻底独立）**
+
+```bash
+mkdir -p ~/python3.13/bin ~/python3.13/lib
+cp /data/data/com.termux/files/usr/bin/python3.13 ~/python3.13/bin/
+cp /data/data/com.termux/files/usr/lib/libpython3.13.so ~/python3.13/lib/
+cp -r /data/data/com.termux/files/usr/lib/python3.13 ~/python3.13/lib/
+ln -sf python3.13 ~/python3.13/bin/python3
+ln -sf python3 ~/python3.13/bin/python
+~/python3.13/bin/python3 -m venv --without-pip ~/hermes-agent/venv_independent
+# 然后手动安装 pip：curl https://bootstrap.pypa.io/get-pip.py | python3
+```
+
+**方案 3：降级 + 锁定（临时方案，不推荐）**
+
+```bash
+apt-get install --allow-downgrades -y python=3.13.12-3
 apt-mark hold python
 apt-mark hold python-ensurepip-wheels
-
-# 重建 venv
-cd ~/hermes-agent
-rm -rf venv
-uv venv venv --python python3
-source venv/bin/activate
-uv pip install -e ".[termux-all]"
 ```
 
 ### ⚠️ 重要提醒
@@ -98,14 +125,6 @@ python3 --version
 ```
 
 如果是 3.14，必须再次降级。
-
-### 自动防护
-
-可以在 `~/.bashrc` 添加：
-
-```bash
-alias pkg-upgrade='pkg upgrade -y && apt-get install --allow-downgrades -y python=3.13.12-3 && apt-mark hold python'
-```
 
 ---
 
